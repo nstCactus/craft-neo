@@ -460,6 +460,17 @@ class Field extends BaseField implements EagerLoadingFieldInterface, GqlInlineFr
     /**
      * @inheritdoc
      */
+    public function getStatus(ElementInterface $element): ?array
+    {
+        return $element->isFieldOutdated($this->handle) ? [
+            Element::ATTR_STATUS_OUTDATED,
+            Craft::t('app', 'This field was updated in the Current revision.'),
+        ] : null;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getElementValidationRules(): array
     {
         return [
