@@ -192,13 +192,17 @@ const BlockSort = Garnish.Drag.extend({
 
       const blockHeight = block.$container.height()
       const topbarHeight = block.$topbarContainer.height()
-      const contentHeight = isExpanded && block.$contentContainer.length > 0 ? block.$contentContainer.height() : 0
       const childrenHeight = isExpanded ? block.$childrenContainer.height() : 0
+      const preChildrenContentHeight = !(isExpanded && block.$contentContainer.length > 0)
+        ? 0
+        : block.$childrenContainer.length > 0
+          ? block.$childrenContainer.offset().top - block.$contentContainer.offset().top
+          : block.$contentContainer.height()
 
       const parentBlock = this.getParentBlock(block)
 
       if (!parentBlock || this._validateDraggeeChildren(parentBlock)) {
-        midpoints[BlockSort.TYPE_CONTENT] = offset + (topbarHeight + contentHeight) / 2
+        midpoints[BlockSort.TYPE_CONTENT] = offset + (topbarHeight + preChildrenContentHeight) / 2
       }
 
       if (childrenHeight > 0 && block.isExpanded() && this._validateDraggeeChildren(block)) {
@@ -244,21 +248,29 @@ const BlockSort = Garnish.Drag.extend({
     }
 
     this._updateHelperAppearance()
-
-    // on scroll up we need to check if the $draggee is still in view or else it'll calculate the midpoint prematurely
-    // and causes the direction to be set DIRECTION_UP and DIRECTION_DOWN rapidly and causes a glitching effect.
-    if (direction === BlockSort.DIRECTION_UP) {
-      // calculate mid point only when the draggee is still in view of the container.
-      if ((this.$draggee.offset().top + this.$container.offset().top) > this.$container.offset().top) {
-        this._calculateMidpoints()
-      }
-    } else {
-      // else if DIRECTION_DOWN
-      this._calculateMidpoints()
-    }
+    this._calculateMidpoints()
   },
 
   _validateDraggeeChildren (block) {
+    // If any of the draggee blocks would exceed the field's max levels, we can't allow the move
+    const field = block ? block.getField() : this._draggeeBlocks[0].getField()
+    const maxLevels = field.getMaxLevels()
+
+    if (maxLevels > 0) {
+      const parentLevel = block ? block.getLevel() : -1
+      const firstDraggeeLevel = this._draggeeBlocks[0].getLevel()
+      const blockExceedsMax = b => b.getLevel() - firstDraggeeLevel + parentLevel + 1 >= maxLevels
+      const blockOrDescendantExceedsMax = b => {
+        const descendants = b.getChildren(field.getBlocks(), true)
+
+        return blockExceedsMax(b) || descendants.some(blockOrDescendantExceedsMax)
+      }
+
+      if (this._draggeeBlocks.filter(blockOrDescendantExceedsMax).length > 0) {
+        return false
+      }
+    }
+
     // If no block, then we're checking at the top level
     if (!block) {
       const that = this

@@ -21,7 +21,8 @@ const _defaults = {
   collapsed: false,
   modified: true,
   static: false,
-  showButtons: true
+  showButtons: true,
+  renderOldChildBlocksContainer: true
 }
 
 const _resources = {}
@@ -64,6 +65,7 @@ function _limit (s, l = 40) {
 export default Garnish.Base.extend({
 
   _templateNs: [],
+  _field: null,
   _blockType: null,
   _initialised: false,
   _expanded: true,
@@ -77,10 +79,12 @@ export default Garnish.Base.extend({
     settings = Object.assign({}, _defaults, settings)
 
     this._templateNs = NS.parse(settings.namespace)
+    this._field = settings.field
     this._blockType = settings.blockType
     this._id = settings.id
     this._buttons = settings.buttons
     this._modified = settings.static ? true : settings.modified
+    this._showButtons = settings.showButtons
 
     NS.enter(this._templateNs)
 
@@ -92,7 +96,7 @@ export default Garnish.Base.extend({
       level: settings.level,
       modified: this._modified,
       sortOrder: this._id,
-      showButtons: settings.showButtons
+      renderOldChildBlocksContainer: settings.renderOldChildBlocksContainer
     }))
 
     NS.leave()
@@ -101,6 +105,7 @@ export default Garnish.Base.extend({
     this.$bodyContainer = $neo.filter('[data-neo-b="container.body"]')
     this.$contentContainer = $neo.filter('[data-neo-b="container.content"]')
     this.$childrenContainer = $neo.filter('[data-neo-b="container.children"]')
+    this.$childrenWarningsContainer = $neo.filter('[data-neo-b="container.childrenWarnings"]')
     this.$collapsedChildrenContainer = $neo.filter('[data-neo-b="container.collapsedChildren"]')
     this.$blocksContainer = $neo.filter('[data-neo-b="container.blocks"]')
     this.$buttonsContainer = $neo.filter('[data-neo-b="container.buttons"]')
@@ -143,85 +148,90 @@ export default Garnish.Base.extend({
     this.setLevel(settings.level)
     this.toggleEnabled(settings.enabled)
     this.toggleExpansion(hasErrors ? true : !settings.collapsed, false, false)
+    this.toggleShowButtons(this._showButtons)
 
     this.addListener(this.$topbarContainer, 'dblclick', '@doubleClickTitle')
     this.addListener(this.$tabButton, 'click', '@setTab')
   },
 
   initUi () {
-    if (!this._initialised) {
-      const tabs = this._blockType.getTabs()
+    if (this._initialised) {
+      // Nothing to do here
+      return
+    }
 
-      const headList = tabs.map(tab => tab.getHeadHtml(this._id))
-      const footList = tabs.map(tab => tab.getFootHtml(this._id))
-      this.$head = $(headList.join('')).filter(_resourceFilter)
-      this.$foot = $(footList.join('')).filter(_resourceFilter)
+    const tabs = this._blockType.getTabs()
+    const headList = tabs.map(tab => tab.getHeadHtml(this._id))
+    const footList = tabs.map(tab => tab.getFootHtml(this._id))
+    this.$head = $(headList.join('')).filter(_resourceFilter)
+    this.$foot = $(footList.join('')).filter(_resourceFilter)
 
-      Garnish.$bod.siblings('head').append(this.$head)
-      Garnish.$bod.append(this.$foot)
+    Garnish.$bod.siblings('head').append(this.$head)
+    Garnish.$bod.append(this.$foot)
 
-      this._initUiElements()
+    this._initUiElements()
 
-      this.$tabsButton.menubtn()
+    this.$tabsButton.menubtn()
 
-      this._settingsMenu = new Garnish.MenuBtn(this.$settingsButton)
-      this._settingsMenu.on('optionSelect', e => this['@settingSelect'](e))
+    this._settingsMenu = new Garnish.MenuBtn(this.$settingsButton)
+    this._settingsMenu.on('optionSelect', e => this['@settingSelect'](e))
 
-      this._initialised = true
+    this._initialised = true
 
-      if (this._buttons) {
-        this._buttons.initUi()
+    if (this._buttons) {
+      this._buttons.initUi()
+    }
+
+    Garnish.requestAnimationFrame(() => this.updateResponsiveness())
+
+    // For Matrix blocks inside a Neo block, this listener adds a class name to the block for Neo to style.
+    // Neo applies its own styles to Matrix blocks in an effort to improve the visibility of them, however
+    // when dragging a Matrix block these styles get lost (since a dragged Matrix block loses its context of
+    // being inside a Neo block). Adding this class name to blocks before they are dragged means that the
+    // dragged Matrix block can still have the Neo-specific styles.
+    this.$container.on('mousedown', '.matrixblock', function (e) {
+      $(this).addClass('neo-matrixblock')
+    })
+
+    // Setting up field and block property watching
+    if (!this._modified && !this.isNew()) {
+      this._initialState = {
+        enabled: this._enabled,
+        level: this._level,
+        content: Garnish.getPostData(this.$contentContainer)
       }
 
-      Garnish.requestAnimationFrame(() => this.updateResponsiveness())
+      const detectChange = () => this._detectChange()
+      const observer = new window.MutationObserver(() => setTimeout(detectChange, 200))
 
-      // For Matrix blocks inside a Neo block, this listener adds a class name to the block for Neo to style.
-      // Neo applies it's own styles to Matrix blocks in an effort to improve the visibility of them, however
-      // when dragging a Matrix block these styles get lost (since a dragged Matrix block loses it's context of
-      // being inside a Neo block). Adding this class name to blocks before they are dragged means that the
-      // dragged Matrix block can still have the Neo-specific styles.
-      this.$container.on('mousedown', '.matrixblock', function (e) {
-        $(this).addClass('neo-matrixblock')
+      observer.observe(this.$container[0], {
+        attributes: true,
+        childList: true,
+        characterData: true,
+        subtree: true
       })
 
-      // Setting up field and block property watching
-      if (!this._modified && !this.isNew()) {
-        this._initialState = {
-          enabled: this._enabled,
-          level: this._level,
-          content: Garnish.getPostData(this.$contentContainer)
-        }
+      this.$contentContainer.on('propertychange change click', 'input, textarea, select, div.redactor-in', detectChange)
+      this.$contentContainer.on('paste input keyup', 'input:not([type="hidden"]), textarea, div.redactor-in', detectChange)
 
-        const detectChange = () => this._detectChange()
-        const observer = new window.MutationObserver(() => setTimeout(detectChange, 200))
+      this._detectChangeObserver = observer
 
-        observer.observe(this.$container[0], {
-          attributes: true,
-          childList: true,
-          characterData: true,
-          subtree: true
-        })
+      // If there's a Super Table field with a static row or min rows set, we need to check for new
+      // rows and force this block's modified state so it saves the new rows
+      if (this.$contentContainer.length > 0 && this.$contentContainer.html().match(/\[blocks\]\[new/)) {
+        this._forceModified = true
+        this.setModified(true)
+        const fieldInputName = this._templateNs[0] + '[' + this._templateNs[1] + ']'
 
-        this.$contentContainer.on('propertychange change click', 'input, textarea, select, div.redactor-in', detectChange)
-        this.$contentContainer.on('paste input keyup', 'input:not([type="hidden"]), textarea, div.redactor-in', detectChange)
-
-        this._detectChangeObserver = observer
-
-        if (this.$contentContainer.length > 0 && this.$contentContainer.html().match(/\[blocks\]\[new/)) {
-          this._forceModified = true
-          this.setModified(true)
-          const fieldInputName = this._templateNs[0] + '[' + this._templateNs[1] + ']'
-
-          if (!Craft.modifiedDeltaNames.includes(fieldInputName)) {
-            Craft.modifiedDeltaNames.push(fieldInputName)
-          }
+        if (!Craft.modifiedDeltaNames.includes(fieldInputName)) {
+          Craft.modifiedDeltaNames.push(fieldInputName)
         }
       }
-
-      addFieldLinks(this.$contentContainer)
-
-      this.trigger('initUi')
     }
+
+    addFieldLinks(this.$contentContainer)
+
+    this.trigger('initUi')
   },
 
   destroy () {
@@ -362,6 +372,10 @@ export default Garnish.Base.extend({
     }
 
     return this.getParent(blocks).getChildren(blocks)
+  },
+
+  getField () {
+    return this._field
   },
 
   updatePreview (condensed = null) {
@@ -735,6 +749,11 @@ export default Garnish.Base.extend({
 
   isEnabled () {
     return this._enabled
+  },
+
+  toggleShowButtons (show = !this._showButtons) {
+    this.$buttonsContainer.toggleClass('hidden', !show)
+    this.$childrenWarningsContainer.toggleClass('hidden', show)
   },
 
   selectTab (name) {

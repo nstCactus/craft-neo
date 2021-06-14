@@ -42,6 +42,19 @@ export default Garnish.Base.extend({
 
     NS.leave()
 
+    this._tabObserver = new window.MutationObserver(() => {
+      const selector = '[data-type=benf\\\\neo\\\\fieldlayoutelements\\\\ChildBlocksUiElement]'
+      const $uiLibraryElement = this._fld.$uiLibraryElements.filter(selector)
+      const $tabUiElement = this._fld.$tabContainer.find(selector)
+      $uiLibraryElement.toggleClass(
+        'hidden',
+        $tabUiElement.length > 0 || $('body.dragging .draghelper' + selector).length > 0
+      )
+      if ($tabUiElement.hasClass('velocity-animating')) {
+        $tabUiElement.removeClass('hidden')
+      }
+    })
+
     for (const tab of settings.layout) {
       const $tab = this.addTab(tab.name)
 
@@ -87,6 +100,7 @@ export default Garnish.Base.extend({
     this.$container.appendTo(document.body)
 
     fld.initTab($tab)
+    this._tabObserver.observe($tab.children('.fld-tabcontent')[0], { childList: true, subtree: true })
 
     return $tab
   },

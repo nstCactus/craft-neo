@@ -2,6 +2,7 @@
 
 namespace benf\neo\services;
 
+use benf\neo\Plugin as Neo;
 use benf\neo\elements\Block;
 use benf\neo\models\BlockStructure;
 use benf\neo\models\BlockType;
@@ -82,7 +83,6 @@ class Blocks extends Component
     public function renderTabs(Block $block, bool $static = false, $namespace = null): array
     {
         $viewService = Craft::$app->getView();
-
         $blockType = $block->getType();
         $field = $blockType->getField();
 

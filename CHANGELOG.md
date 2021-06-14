@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.10.0 - 2021-06-14
+
+### Added
+- Added the Child Blocks UI element, which allows for putting the child blocks in a single place anywhere in a block type's field layout, rather than displaying them at the bottom of every tab
+- Added the `optimiseSearchIndexing` plugin setting (enabled by default)
+- Added the `getByHandle()` method to the `BlockTypes` service
+
+### Changed
+- Neo now requires Craft 3.6.6 or later
+- When Craft runs garbage collection, incomplete Neo element data will now be deleted
+- When saving a Neo block that doesn't have a field layout, doesn't have any searchable sub-fields or belongs to a non-searchable Neo field, Neo will now opt out of updating search indexes for that block unless the `optimiseSearchIndexing` plugin setting is disabled
+- Updated Neo fields' 'add block' button styling to match that of Matrix fields' 'add block' button
+- Changed Neo's JavaScript dependency package management from Yarn to NPM
+
+### Fixed
+- Fixed a bug where Neo input blocks could be dragged to positions where they would exceed their field's Max Levels setting
+- Fixed a bug where Neo blocks' enabled and collapsed states weren't retained in some cases when cloning them
+- Fixed a bug where, if a Neo field was showing the "Add a block" dropdown, the headings of block type groups would always show, even if none of that group's block types could be added in that position in the field
+
+## 2.9.13 - 2021-06-09
+
+### Fixed
+- Fixed a potential migration error when updating to Neo 2.9.11 or 2.9.12
+
+## 2.9.12 - 2021-06-08
+
+### Fixed
+- Fixed incompatibility with Field Manager (thanks @engram-design)
+- Fixed a bug that could sometimes cause Neo blocks to appear out of order
+
 ## 2.9.11 - 2021-06-04
 
 ### Fixed
